@@ -16,7 +16,8 @@ django.setup()
 from app.models import User, Ad
 from django.utils import timezone
 
-
+GroupId = '-1002120671637'
+BONUS = 10
 def send_ad():
     while True:
         n = timezone.now()
@@ -36,7 +37,7 @@ def send_ad():
                        f'Достижения: {ad.successes}\n' \
                        f'О нас: {ad.about_as}\n' \
                        f'Кого ищем: {ad.who}'
-                bot.send_message(chat_id='-1002120671637', text=text)
+                bot.send_message(chat_id=GroupId, text=text)
             time.sleep(60 * 60)
         else:
             time.sleep(60)
@@ -161,6 +162,23 @@ def start(message):
     menu(chat_id=chat_id, user=user)
 
 
+@bot.message_handler(commands=['my_stats'])
+def start(message):
+    chat_id = message.chat.id
+    user, _ = User.objects.get_or_create(chat_id=chat_id)
+    text = f'Количество приглашенных пользователей: {user.invite_user}\n' \
+           f'Количество баллов: {user.bonus}'
+@admin_bot.message_handler(commands=['get_referral_link'])
+def get_referral_link(message):
+    chat_id = message.chat.id
+    user = User.objects.get(chat_id=chat_id)
+    if not user.invite_link:
+        user.invite_link = bot.create_chat_invite_link(chat_id=GroupId)
+        user.save(update_fields=['invite_link'])
+    text = f'Ваша ссылка для приглашения: {user.invite_link}'
+    bot.send_message(chat_id=chat_id, text=text)
+
+
 def menu(chat_id, user):
     pay = user.ad.all()
     text = 'Здравствуйте!\n\n' \
@@ -178,6 +196,16 @@ def checkout(pre_checkout_query):
                                   error_message="Aliens tried to steal your card's CVV, but we successfully protected your credentials,"
                                                 " try to pay again in a few minutes, we need a small rest.")
 
+@bot.chat_join_request_handler()
+def n(message):
+    chat_id = message.chat.id
+    link = message.invite_link.invite_link[:-3]
+    users = User.objects.filter(invite_link__contains=link)
+    for user in users:
+        user.bonus += BONUS
+        user.invite_user += 1
+        user.save(update_fields=['bonus', 'invite_user'])
+    bot.approve_chat_join_request(chat_id=chat_id, user_id=message.from_user.id)
 
 @bot.message_handler(content_types=['successful_payment'])
 def got_payment(message):
@@ -199,8 +227,6 @@ def got_payment(message):
            f'Кого ищем: {ad.who}'
     admin_bot.send_message(chat_id=admin.chat_id, text=text,
                            reply_markup=buttons.admin_buttons(user_id=user.chat_id, ad_id=ad.id))
-
-
 @admin_bot.message_handler(commands=['start'])
 def admin_start(message):
     if User.objects.filter(chat_id=message.chat.id, is_admin=True):
@@ -241,6 +267,19 @@ def set_send_time(chat_id, time, ad_id):
     ad.save(update_fields=['send_date'])
     bot.send_message(chat_id=chat_id, text=f'Ваше объявление будет опубликовано {time}')
 
+def pay(chat_id, user, ad_id):
+    ad = Ad.objects.get(id=ad_id)
+    admin = random.choice(User.objects.filter(is_admin=True))
+    text = f'Имя: {ad.name}\n' \
+           f'Роль: {ad.role}\n' \
+           f'Ник в телеграмм: {ad.username}\n' \
+           f'Маркетплейс: {ad.marketplace}\n' \
+           f'Категория: {ad.category}\n' \
+           f'Достижения: {ad.successes}\n' \
+           f'О нас: {ad.about_as}\n' \
+           f'Кого ищем: {ad.who}'
+    admin_bot.send_message(chat_id=admin.chat_id, text=text,
+                           reply_markup=buttons.admin_buttons(user_id=user.chat_id, ad_id=ad.id))
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
@@ -271,6 +310,8 @@ def callback(call):
             choose_time(chat_id=chat_id, date=data[1], ad_id=data[2])
         elif data[0] == 'time':
             set_send_time(chat_id=chat_id, time=data[1], ad_id=data[2])
+        elif data[0] == 'pay':
+            pay(chat_id=chat_id, user=user, ad_id=data[1])
 
 
 def run_user_bot():
@@ -279,7 +320,6 @@ def run_user_bot():
 
 def run_admin_bot():
     admin_bot.polling(none_stop=True)
-
 
 if __name__ == '__main__':
     run_user_bot = threading.Thread(target=run_user_bot)

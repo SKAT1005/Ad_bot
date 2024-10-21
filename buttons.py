@@ -16,9 +16,12 @@ def choose_marketplace():
     return markup
 
 
-def pay(id):
+def pay(id, user):
     markup = types.InlineKeyboardMarkup(row_width=1)
     btn = types.InlineKeyboardButton(text='Оплатить и отправить на модерацию', pay=True)
+    if user.bonus >= 1799:
+        pay = types.InlineKeyboardButton(text='Оплатить баллами и отправить на модерацию', callback_data=f'pay|{id}')
+        markup.add(pay)
     change = types.InlineKeyboardButton(text='Изменить', callback_data=f"change|{id}")
     markup.add(btn, change)
     return markup

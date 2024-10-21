@@ -4,6 +4,9 @@ class User(models.Model):
     chat_id = models.CharField(max_length=32, verbose_name='Id чата пользователя')
     ad = models.ManyToManyField('Ad', blank=True, verbose_name='Объявления клиента')
     is_admin = models.BooleanField(default=False, verbose_name='Является ли пользователь админом')
+    invite_link = models.CharField(max_length=64, blank=True, null=True, verbose_name='Ссылка приглашение')
+    invite_user = models.IntegerField(default=0, verbose_name='Кол-во приглашенных пользователей')
+    bonus = models.IntegerField(default=0, verbose_name='Кол-во бонусов пользователя')
 
 
 
