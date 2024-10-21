@@ -16,8 +16,8 @@ django.setup()
 from app.models import User, Ad
 from django.utils import timezone
 
-GroupId = '-1002120671637'
-BONUS = 10
+GroupId = '-1002107198092'
+BONUS = 1
 def send_ad():
     while True:
         n = timezone.now()
