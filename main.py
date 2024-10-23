@@ -6,6 +6,7 @@ import time
 
 import django
 import telebot
+from telebot import types
 from telebot.types import LabeledPrice
 
 import buttons
@@ -16,8 +17,10 @@ django.setup()
 from app.models import User, Ad
 from django.utils import timezone
 
-GroupId = '-1002107198092'
+GroupId = '-1002288348602'
 BONUS = 1
+
+
 def send_ad():
     while True:
         n = timezone.now()
@@ -27,7 +30,7 @@ def send_ad():
             year = n.year
             hours = n.hour
             s = f"{day}.{month}.{year} {hours}:00"
-            ads = Ad.objects.filter(date=s)
+            ads = Ad.objects.filter(send_date=s)
             for ad in ads:
                 text = f'Имя: {ad.name}\n' \
                        f'Роль: {ad.role}\n' \
@@ -57,14 +60,14 @@ def enter_who(message, chat_id, user, name, role, username, marketplace, categor
             who=who
         )
         user.ad.add(ad)
-        text = f'Имя: {name}\n' \
-               f'Роль: {role}\n' \
-               f'Ник в телеграмм: {username}\n' \
-               f'Маркетплейс: {marketplace}\n' \
-               f'Категория: {category}\n' \
-               f'Достижения: {successes}\n' \
-               f'О нас: {about_as}\n' \
-               f'Кого ищем: {who}'
+        text = f'Имя: {name}\n;' \
+               f'Роль: {role}\n;' \
+               f'Ник в телеграмм: {username}\n;' \
+               f'Маркетплейс: {marketplace}\n;' \
+               f'Категория: {category}\n;' \
+               f'Достижения: {successes}\n;' \
+               f'О нас: {about_as}\n;' \
+               f'Кого ищем: {who};'
         prices = [LabeledPrice(label="XTR", amount=1)]
         bot.send_invoice(chat_id=chat_id,
                          title='Оплата рекламы',
@@ -73,7 +76,7 @@ def enter_who(message, chat_id, user, name, role, username, marketplace, categor
                          currency='XTR',
                          invoice_payload='channel_support',
                          provider_token='',
-                         reply_markup=buttons.pay(ad.id))
+                         reply_markup=buttons.pay(ad.id, user=user))
 
 
 def enter_about_as(message, chat_id, user, name, role, username, marketplace, category, successes):
@@ -86,7 +89,7 @@ def enter_about_as(message, chat_id, user, name, role, username, marketplace, ca
                '— работа в системе учета\n' \
                '— своевременная оплата\n' \
                '— возможность роста в зп'
-        msg = bot.send_message(chat_id=chat_id, text=text)
+        msg = bot.send_message(chat_id=chat_id, text=text, reply_markup=buttons.start_over())
         bot.register_next_step_handler(msg, enter_who, chat_id, user, name, role, username, marketplace, category,
                                        successes, about_as)
 
@@ -99,7 +102,7 @@ def enter_successes(message, chat_id, user, name, role, username, marketplace, c
                '📍Работаю 2 года\n' \
                '📍Удаленная работа\n' \
                '📍Владение фотошопом (ссылка на примеры работ)'
-        msg = bot.send_message(chat_id=chat_id, text=text)
+        msg = bot.send_message(chat_id=chat_id, text=text, reply_markup=buttons.start_over())
         bot.register_next_step_handler(msg, enter_about_as, chat_id, user, name, role, username, marketplace, category,
                                        successes)
 
@@ -111,16 +114,21 @@ def enter_category(message, chat_id, user, name, role, username, marketplace):
                'Пример ответа: \n\n' \
                '— развил магазин с 100 000 рублей до 1 200 000 рублей за 3 месяца\n' \
                '— магазина 1 000 000 выручки в месяц'
-        msg = bot.send_message(chat_id=chat_id, text=text)
+        msg = bot.send_message(chat_id=chat_id, text=text, reply_markup=buttons.start_over())
         bot.register_next_step_handler(msg, enter_successes, chat_id, user, name, role, username, marketplace, category)
 
 
 def enter_marketplace(message, chat_id, user, name, role, username):
     if message.content_type == 'text':
         marketplace = message.text
-        text = '5/9. Введите категории товаров'
-        msg = bot.send_message(chat_id=chat_id, text=text, reply_markup=None)
-        bot.register_next_step_handler(msg, enter_category, chat_id, user, name, role, username, marketplace)
+        n = bot.send_message(chat_id=chat_id, text='.', reply_markup=types.ReplyKeyboardRemove())
+        if marketplace == 'Начать сначала':
+            create_ad(chat_id=chat_id, user=user)
+        else:
+            text = '5/9. Введите категории товаров'
+            bot.delete_message(chat_id=chat_id, message_id=n.id)
+            msg = bot.send_message(chat_id=chat_id, text=text, reply_markup=buttons.start_over())
+            bot.register_next_step_handler(msg, enter_category, chat_id, user, name, role, username, marketplace)
 
 
 def enter_username(message, chat_id, user, name, role):
@@ -134,15 +142,17 @@ def enter_username(message, chat_id, user, name, role):
 def enter_role(message, chat_id, user, name):
     if message.content_type == 'text':
         role = message.text
-        if role not in ['Менеджер', 'Селлер']:
+        if role == 'Начать сначала':
+            create_ad(chat_id=chat_id, user=user)
+        elif role not in ['Менеджер', 'Селлер']:
             msg = bot.send_message(chat_id=chat_id, text='Выберите роль из кнопок под клавиатурой',
                                    reply_markup=buttons.choose_role())
             bot.register_next_step_handler(msg, enter_role, chat_id, user, name)
         else:
-            text = '3/9. Введите ник в телеграм для связи\n\n' \
+            text = '3/9. Введите ник куда отправлять заявки\n\n' \
                    'Пример ответа:\n\n' \
-                   '@redmilliard'
-            msg = bot.send_message(chat_id=chat_id, text=text, reply_markup=None)
+                   '@first_seller'
+            msg = bot.send_message(chat_id=chat_id, text=text, reply_markup=buttons.start_over())
             bot.register_next_step_handler(msg, enter_username, chat_id, user, name, role)
 
 
@@ -155,39 +165,62 @@ def enter_name(message, chat_id, user):
         bot.register_next_step_handler(msg, enter_role, chat_id, user, name)
 
 
-@bot.message_handler(commands=['start'])
-def start(message):
-    chat_id = message.chat.id
-    user, _ = User.objects.get_or_create(chat_id=chat_id)
-    menu(chat_id=chat_id, user=user)
-
-
-@bot.message_handler(commands=['my_stats'])
-def start(message):
-    chat_id = message.chat.id
-    user, _ = User.objects.get_or_create(chat_id=chat_id)
-    text = f'Количество приглашенных пользователей: {user.invite_user}\n' \
-           f'Количество баллов: {user.bonus}'
-@admin_bot.message_handler(commands=['get_referral_link'])
-def get_referral_link(message):
-    chat_id = message.chat.id
-    user = User.objects.get(chat_id=chat_id)
-    if not user.invite_link:
-        user.invite_link = bot.create_chat_invite_link(chat_id=GroupId)
-        user.save(update_fields=['invite_link'])
-    text = f'Ваша ссылка для приглашения: {user.invite_link}'
-    bot.send_message(chat_id=chat_id, text=text)
-
-
-def menu(chat_id, user):
+def create_ad(chat_id, user):
     pay = user.ad.all()
     text = 'Здравствуйте!\n\n' \
            f'Оплачено объявлений — {pay.count()}\n' \
            f'Опубликовано/запланировано объявлений — {pay.filter(is_check=True).count()}\n\n' \
            'Чтобы разместить объявление, ответьте, пожалуйста, на вопросы:\n\n' \
            '1/9. Введите ваше имя'
-    msg = bot.send_message(chat_id=chat_id, text=text)
+    msg = bot.send_message(chat_id=chat_id, text=text, reply_markup=buttons.start_over())
     bot.register_next_step_handler(msg, enter_name, chat_id, user)
+
+
+@bot.message_handler(commands=['start'])
+def start(message):
+    chat_id = message.chat.id
+    user, _ = User.objects.get_or_create(chat_id=chat_id)
+    menu(chat_id=chat_id, user=user)
+
+def get_referral_link(chat_id, user):
+    if not user.invite_link:
+        user.invite_link = bot.create_chat_invite_link(chat_id=GroupId, creates_join_request=True).invite_link
+        user.save(update_fields=['invite_link'])
+    text = f'Ваша ссылка для приглашения: {user.invite_link}'
+    bot.send_message(chat_id=chat_id, text=text)
+
+
+@bot.message_handler(commands=['get_referral_link'])
+def get_referral_link_hendler(message):
+    chat_id = message.chat.id
+    user, _ = User.objects.get_or_create(chat_id=chat_id)
+    get_referral_link(chat_id=chat_id, user=user)
+
+
+def get_stat(chat_id, user):
+    text = f'Количетво приглашенных пользователей: {user.invite_user}\n' \
+           f'Количество бонусов: {user.bonus}'
+    bot.send_message(chat_id=chat_id, text=text)
+
+
+@bot.message_handler(commands=['my_stats'])
+def get_status_hendler(message):
+    chat_id = message.chat.id
+    user, _ = User.objects.get_or_create(chat_id=chat_id)
+    get_stat(chat_id=chat_id, user=user)
+
+
+@bot.message_handler(content_types=telebot.util.content_type_service)
+def delite_invite_message(message):
+    try:
+        bot.delete_message(chat_id=message.chat.id, message_id=message.id)
+    except Exception:
+        pass
+
+
+def menu(chat_id, user):
+    text = 'Что бы вы хотели сделать?'
+    bot.send_message(chat_id=chat_id, text=text, reply_markup=buttons.menu())
 
 
 @bot.pre_checkout_query_handler(func=lambda query: True)
@@ -195,6 +228,7 @@ def checkout(pre_checkout_query):
     bot.answer_pre_checkout_query(pre_checkout_query.id, ok=True,
                                   error_message="Aliens tried to steal your card's CVV, but we successfully protected your credentials,"
                                                 " try to pay again in a few minutes, we need a small rest.")
+
 
 @bot.chat_join_request_handler()
 def n(message):
@@ -207,26 +241,8 @@ def n(message):
         user.save(update_fields=['bonus', 'invite_user'])
     bot.approve_chat_join_request(chat_id=chat_id, user_id=message.from_user.id)
 
-@bot.message_handler(content_types=['successful_payment'])
-def got_payment(message):
-    chat_id = message.chat.id
-    user = User.objects.get(chat_id=chat_id)
-    ad = user.ad.last()
-    admin = random.choice(User.objects.filter(is_admin=True))
-    try:
-        bot.delete_message(chat_id=chat_id, message_id=message.id)
-    except Exception:
-        pass
-    text = f'Имя: {ad.name}\n' \
-           f'Роль: {ad.role}\n' \
-           f'Ник в телеграмм: {ad.username}\n' \
-           f'Маркетплейс: {ad.marketplace}\n' \
-           f'Категория: {ad.category}\n' \
-           f'Достижения: {ad.successes}\n' \
-           f'О нас: {ad.about_as}\n' \
-           f'Кого ищем: {ad.who}'
-    admin_bot.send_message(chat_id=admin.chat_id, text=text,
-                           reply_markup=buttons.admin_buttons(user_id=user.chat_id, ad_id=ad.id))
+
+
 @admin_bot.message_handler(commands=['start'])
 def admin_start(message):
     if User.objects.filter(chat_id=message.chat.id, is_admin=True):
@@ -267,6 +283,32 @@ def set_send_time(chat_id, time, ad_id):
     ad.save(update_fields=['send_date'])
     bot.send_message(chat_id=chat_id, text=f'Ваше объявление будет опубликовано {time}')
 
+@bot.message_handler(content_types=['successful_payment'])
+def got_payment(message):
+    chat_id = message.chat.id
+    user = User.objects.get(chat_id=chat_id)
+    ad = user.ad.last()
+    admin = random.choice(User.objects.filter(is_admin=True))
+    try:
+        bot.delete_message(chat_id=chat_id, message_id=message.id)
+        bot.delete_message(chat_id=chat_id, message_id=message.id-1)
+    except Exception:
+        pass
+    text = f'Имя: {ad.name}\n' \
+           f'Роль: {ad.role}\n' \
+           f'Ник в телеграмм: {ad.username}\n' \
+           f'Маркетплейс: {ad.marketplace}\n' \
+           f'Категория: {ad.category}\n' \
+           f'Достижения: {ad.successes}\n' \
+           f'О нас: {ad.about_as}\n' \
+           f'Кого ищем: {ad.who}'
+    admin_bot.send_message(chat_id=admin.chat_id, text=text,
+                           reply_markup=buttons.admin_buttons(user_id=user.chat_id, ad_id=ad.id))
+    bot.send_message(chat_id=chat_id,
+                     text='Отлично! Ваше сообщение отправлено на модерацию, пожалуйста ожидайте решения 🙂')
+    time.sleep(1)
+    menu(chat_id=chat_id, user=user)
+
 def pay(chat_id, user, ad_id):
     ad = Ad.objects.get(id=ad_id)
     admin = random.choice(User.objects.filter(is_admin=True))
@@ -280,6 +322,11 @@ def pay(chat_id, user, ad_id):
            f'Кого ищем: {ad.who}'
     admin_bot.send_message(chat_id=admin.chat_id, text=text,
                            reply_markup=buttons.admin_buttons(user_id=user.chat_id, ad_id=ad.id))
+    bot.send_message(chat_id=chat_id,
+                     text='Отлично! Ваше сообщение отправлено на модерацию, пожалуйста ожидайте решения 🙂')
+    time.sleep(1)
+    menu(chat_id=chat_id, user=user)
+
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
@@ -312,6 +359,14 @@ def callback(call):
             set_send_time(chat_id=chat_id, time=data[1], ad_id=data[2])
         elif data[0] == 'pay':
             pay(chat_id=chat_id, user=user, ad_id=data[1])
+        elif data[0] == 'back':
+            choose_date(chat_id=chat_id, ad_id=data[1])
+        elif data[0] == 'get_invite_link':
+            get_referral_link(chat_id=chat_id, user=user)
+        elif data[0] == 'get_my_stats':
+            get_stat(chat_id=chat_id, user=user)
+        elif data[0] == 'create_ad':
+            create_ad(chat_id=chat_id, user=user)
 
 
 def run_user_bot():
@@ -320,6 +375,7 @@ def run_user_bot():
 
 def run_admin_bot():
     admin_bot.polling(none_stop=True)
+
 
 if __name__ == '__main__':
     run_user_bot = threading.Thread(target=run_user_bot)
